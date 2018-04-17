@@ -81,9 +81,9 @@ function source_tag() {
 function build_image() {
   echo "Build image..."
   if [ "${error_msg}" == "" ]; then
-    ocd="$(pwd)"
-    cd ..
-    echo "- building image with:"
+    #ocd="$(pwd)"
+    #cd ..
+    echo "- building image from ($(pwd)) with:"
     echo " * app=${APP_NAME}"
     echo " * release=${IMAGE_VERSION}"
     echo " * app.source.version=branch ${REPO_BRANCH}"
@@ -115,7 +115,7 @@ function build_image() {
         echo ${error_msg}
       fi
     fi
-    cd ${ocd}
+    #cd ${ocd}
     echo "finished build image."
   else
     echo "skipped due to errors..."
