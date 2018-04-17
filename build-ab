@@ -12,9 +12,10 @@ RUNSTAMP="$(date +"%F.%H%M")"
 : ${SOURCE_DATE:="${RUNSTAMP}"}
 : ${BUILD_VERSION:="${RUNSTAMP}"}
 : ${TAG_IMAGE_LATEST:=true}   # add the 'latest' tag to the image
+: ${SRC_DIR:='/opt/sources'}   # add the 'latest' tag to the image
 # lesser used params
 : ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
-: ${APP_NAME:='sqlpad'}   # application name
+: ${APP_NAME:='undefined'}   # application name
 : ${SLACK_WEBHOOK_URL:='ENTER-SLACK-WEBHOOK-URL-HERE'}
 : ${SLACK_CHANNEL:='#builds'}
 : ${OMIT_VC_TAGGING:=false}   # omit applying vc tag (useful while testing build)
