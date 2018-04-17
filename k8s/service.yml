@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: List
+items:
+- apiVersion: apps/v1beta1
+  kind: Deployment
+  metadata:
+    name: sqlpad
+  spec:
+    template:
+      metadata:
+        labels:
+          run: sqlpad
+      spec:
+        volumes:
+          - name: sqlpad-pv-storage
+            persistentVolumeClaim:
+              claimName: sqlpad-pv-claim
+        containers:
+          - name: sqlpad
+            image: pcr.wwnorton.com:5000/sqlpad:v2.0.0
+            ports:
+              - containerPort: 3000
+            volumeMounts:
+              - mountPath: "/var/lib/sqlpad"
+                name: sqlpad-pv-storage
+            env:
+              - name: SQLPAD_PASSPHRASE
+                value: "qA0pwEscdQpO9sGb4vUmswn0jpJv9Gh3r"
+              - name: SQLPAD_ADMIN
+                value: "drader@adercon.com"
+              - name: SQLPAD_BASE_URL
+                value: "/sqlpad"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: sqlpad
+    labels:
+      run: sqlpad
+  spec:
+    type: NodePort
+    ports:
+    - port: 3000
+      nodePort: 30050
+    selector:
+      run: sqlpad
