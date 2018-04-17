@@ -1,0 +1,185 @@
+#!/bin/bash
+# an autobuild build script.
+#
+
+RUNSTAMP="$(date +"%F.%H%M")"
+
+# PARAMS (with defaults).
+: ${REPO_BRANCH:=master}
+: ${VC_TAG:="isi-${RUNSTAMP}"}
+: ${VC_TAG_COMMENT:="created with autobuild"}
+: ${IMAGE_VERSION:="a${RUNSTAMP}"}
+: ${SOURCE_DATE:="${RUNSTAMP}"}
+: ${BUILD_VERSION:="${RUNSTAMP}"}
+: ${TAG_IMAGE_LATEST:=true}   # add the 'latest' tag to the image
+# lesser used params
+: ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
+: ${APP_NAME:='sqlpad'}   # application name
+: ${SLACK_WEBHOOK_URL:='ENTER-SLACK-WEBHOOK-URL-HERE'}
+: ${SLACK_CHANNEL:='#builds'}
+: ${OMIT_VC_TAGGING:=false}   # omit applying vc tag (useful while testing build)
+: ${DRY_RUN:=false}
+
+# Errors
+error_msg=''
+ERR_Missing_Dockerfile="ERR-01: Dockerfile not found, cannot continue."
+ERR_Docker_Build_Failed="ERR-02: Docker Build failed, cannot continue."
+ERR_Get_Docker_Build_Data_Failed="ERR-03: Get Docker Build Data failed, cannot continue."
+ERR_Git_Checkout_Failed="ERR-04: Git Checkout failed, cannot continue."
+ERR_Git_Pull_Failed="ERR-05: Git Pull failed, cannot continue."
+ERR_Git_Tag_Failed="ERR-06: Git Tag failed, cannot continue."
+ERR_Docker_Push_Failed="ERR-07: Docker Push failed, cannot continue."
+
+
+# functions
+function update_source() {
+  echo "Update source..."
+  if [ "${error_msg}" == "" ]; then
+    echo "- check out branch: ${REPO_BRANCH}"
+    if [ "${DRY_RUN}" == "false" ]; then
+      git checkout ${REPO_BRANCH}
+      # check result.
+      if [ "$?" -ne 0 ]; then
+        error_msg="${ERR_Git_Checkout_Failed}"
+        echo ${error_msg}
+      fi
+    fi
+    echo "Update branch..."
+    if [ "${DRY_RUN}" == "false" ]; then
+      git pull
+      # check result.
+      if [ "$?" -ne 0 ]; then
+        error_msg="${ERR_Git_Pull_Failed}"
+        echo ${error_msg}
+      fi
+    fi
+    echo "finished update source."
+  else
+    echo "skipped due to errors..."
+  fi
+}
+function source_tag() {
+  echo "Tag source..."
+  if [ "${error_msg}" == "" ]; then
+    echo "- tagging with: ${VC_TAG} (${VC_TAG_COMMENT})"
+    if [ "${DRY_RUN}" == "false" ]; then
+      if [ "${OMIT_VC_TAGGING}" == "false" ]; then
+        git tag -a ${VC_TAG} -m "${VC_TAG_COMMENT}"
+        # check result.
+        if [ "$?" -ne 0 ]; then
+          error_msg="${ERR_Git_Tag_Failed}"
+          echo ${error_msg}
+        fi
+      fi
+    fi
+    echo "finished tag source."
+  else
+    echo "skipped due to errors..."
+  fi
+}
+function build_image() {
+  echo "Build image..."
+  if [ "${error_msg}" == "" ]; then
+    ocd="$(pwd)"
+    cd ..
+    echo "- building image with:"
+    echo " * app=${APP_NAME}"
+    echo " * release=${IMAGE_VERSION}"
+    echo " * app.source.version=branch ${REPO_BRANCH}"
+    echo " * app.source.version.note=${VC_TAG_COMMENT}"
+    echo " * app.source.date=${SOURCE_DATE}"
+    echo " * app.build.version=${BUILD_VERSION}"
+    echo " * app.build.img-set-id=${VC_TAG}"
+    if [ "${DRY_RUN}" == "false" ]; then
+      tag_list="--tag ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
+      if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
+        tag_list="${tag_list} --tag ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
+      fi
+      echo "- tag list is: ${tag_list}"
+      if [ ! -f "Dockerfile" ]; then
+        echo ${ERR_Missing_Dockerfile}
+        exit 5
+      fi
+      docker build \
+        ${tag_list} \
+        --label "app.source.version=branch ${REPO_BRANCH}" \
+        --label "app.source.version.note=${VC_TAG_COMMENT}" \
+        --label "app.source.date=${SOURCE_DATE}" \
+        --label "app.build.version=${RUNSTAMP}" \
+        --label "app.build.img-set-id=${VC_TAG}" \
+        .
+      # check build result.
+      if [ "$?" -ne 0 ]; then
+        error_msg="${ERR_Docker_Build_Failed}"
+        echo ${error_msg}
+      fi
+    fi
+    cd ${ocd}
+    echo "finished build image."
+  else
+    echo "skipped due to errors..."
+  fi
+}
+function push_image() {
+  echo "Push image..."
+  if [ "${error_msg}" == "" ]; then
+    echo "- pushing image to Repo: ${IMAGE_REPO}"
+    if [ "${DRY_RUN}" == "false" ]; then
+      echo "- pushing image: ${IMAGE_VERSION}..."
+      docker push ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}
+      # check result.
+      if [ "$?" -ne 0 ]; then
+        error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"
+        echo ${error_msg}
+      fi
+      echo 'pushing ${IMAGE_VERSION} complete'
+      if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
+        echo '- pushing image: latest...'
+        docker push ${IMAGE_REPO}/${APP_NAME}:latest
+        # check result.
+        if [ "$?" -ne 0 ]; then
+          error_msg="${ERR_Docker_Push_Failed} Failing image: latest"
+          echo ${error_msg}
+        fi
+        echo 'pushing latest complete'
+      fi
+    fi
+    echo "finished push image."
+  else
+    echo "skipped due to errors..."
+  fi
+}
+function notify() {
+  build_time="${1}"
+  echo "Send slack message..."
+  echo "- channel: ${SLACK_CHANNEL}"
+  build_result="✓ success"
+  # get image size.
+  resulting_image_size=$(docker images --filter=reference="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}" --format "{{.Size}}")
+  if [ "${error_msg}" != "" ]; then
+    build_result="✗ failure: ${error_msg}"
+  fi
+  text="${APP_NAME} build completed.\n • result: ${build_result}\n • image size: ${resulting_image_size}\n • image: ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}\n----\n • runstamp: ${RUNSTAMP}\n • app.source.version: branch ${REPO_BRANCH}\n • app.build.image-set-id: ${VC_TAG}\n • build time: ${build_time}s"
+  escaped_text=$(echo $text | sed 's/"/\"/g' | sed "s/'/\'/g" )
+  json="{\"icon_emoji\": \":eyes\", \"username\": \"buildbot\", \"channel\": \"#${SLACK_CHANNEL}\", \"text\": \"${escaped_text}\"}"
+  if [ "${DRY_RUN}" == "false" ]; then
+    curl -s -S -d "payload=$json" "${SLACK_WEBHOOK_URL}"
+  fi
+  echo "finished send slack message."
+}
+
+echo "Starting build..."
+
+start=$(date +%s)
+
+# build steps
+update_source
+source_tag
+build_image
+push_image
+
+end=$(date +%s)
+runtime=$((end-start))
+notify ${runtime}
+
+echo "Finished build."
