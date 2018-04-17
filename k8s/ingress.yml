@@ -1,0 +1,18 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+ name: sqlpad-ing
+ annotations:
+    kubernetes.io/ingress.class: "nginx"
+    # rewrite is not needed for this app as it has a base_url.
+    #nginx.ingress.kubernetes.io/rewrite-target: "/"
+
+spec:
+ rules:
+ - host: klb.wwnorton.com
+   http:
+     paths:
+     - path: /sqlpad
+       backend:
+         serviceName: sqlpad
+         servicePort: 3000

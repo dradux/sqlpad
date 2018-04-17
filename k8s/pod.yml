@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sqlpad
+spec:
+  containers:
+    - name: sqlpad
+      image: pcr.wwnorton.com:5000/sqlpad:latest
+      ports:
+        - containerPort: 3333
+      #~ env:
+        #~ - name: DLP_MOCK_HANDLERS
+          #~ value: "ALL-FROM-POD"
