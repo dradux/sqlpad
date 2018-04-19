@@ -5,23 +5,23 @@
 RUNSTAMP="$(date +"%F.%H%M")"
 
 # PARAMS (with defaults).
+: ${APP_NAME:='undefined'}                                              # application name
+: ${BUILD_VERSION:="${RUNSTAMP}"}
+: ${DRY_RUN:=false}
+: ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
+: ${IMAGE_VERSION:="a${RUNSTAMP}"}
+: ${OMIT_VC_TAGGING:=false}                                             # omit applying vc tag (useful while testing build)
+: ${PUSH_IMAGE_ENABLED:='true'}                                         # push image to image registry
 : ${REPO_BRANCH:=master}
+: ${SLACK_CHANNEL:='#builds'}
+: ${SLACK_WEBHOOK_URL:='ENTER-SLACK-WEBHOOK-URL-HERE'}
+: ${SOURCE_DATE:="${RUNSTAMP}"}
+: ${SOURCE_DIR:='/opt/sources'}                                            # add the 'latest' tag to the image
+: ${TAG_IMAGE_LATEST:=true}                                             # add the 'latest' tag to the image
 : ${VC_TAG:="isi-${RUNSTAMP}"}
 : ${VC_TAG_COMMENT:="created with autobuild"}
-: ${IMAGE_VERSION:="a${RUNSTAMP}"}
-: ${SOURCE_DATE:="${RUNSTAMP}"}
-: ${BUILD_VERSION:="${RUNSTAMP}"}
-: ${TAG_IMAGE_LATEST:=true}   # add the 'latest' tag to the image
-: ${SRC_DIR:='/opt/sources'}   # add the 'latest' tag to the image
-# lesser used params
-: ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
-: ${APP_NAME:='undefined'}   # application name
-: ${SLACK_WEBHOOK_URL:='ENTER-SLACK-WEBHOOK-URL-HERE'}
-: ${SLACK_CHANNEL:='#builds'}
-: ${OMIT_VC_TAGGING:=false}   # omit applying vc tag (useful while testing build)
-: ${DRY_RUN:=false}
 
-# Errors
+resulting_image_size='not available'
 error_msg=''
 ERR_Missing_Dockerfile="ERR-01: Dockerfile not found, cannot continue."
 ERR_Docker_Build_Failed="ERR-02: Docker Build failed, cannot continue."
@@ -121,28 +121,32 @@ function build_image() {
 function push_image() {
   echo "Push image..."
   if [ "${error_msg}" == "" ]; then
-    echo "- pushing image to Repo: ${IMAGE_REPO}"
-    if [ "${DRY_RUN}" == "false" ]; then
-      echo "- pushing image: ${IMAGE_VERSION}..."
-      docker push ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}
-      # check result.
-      if [ "$?" -ne 0 ]; then
-        error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"
-        echo ${error_msg}
-      fi
-      echo 'pushing ${IMAGE_VERSION} complete'
-      if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
-        echo '- pushing image: latest...'
-        docker push ${IMAGE_REPO}/${APP_NAME}:latest
+    if [ "${PUSH_IMAGE_ENABLED}" == "true" ]; then
+      echo "- pushing image to Repo: ${IMAGE_REPO}"
+      if [ "${DRY_RUN}" == "false" ]; then
+        echo "- pushing image: ${IMAGE_VERSION}..."
+        docker push ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}
         # check result.
         if [ "$?" -ne 0 ]; then
-          error_msg="${ERR_Docker_Push_Failed} Failing image: latest"
+          error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"
           echo ${error_msg}
         fi
-        echo 'pushing latest complete'
+        echo 'pushing ${IMAGE_VERSION} complete'
+        if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
+          echo '- pushing image: latest...'
+          docker push ${IMAGE_REPO}/${APP_NAME}:latest
+          # check result.
+          if [ "$?" -ne 0 ]; then
+            error_msg="${ERR_Docker_Push_Failed} Failing image: latest"
+            echo ${error_msg}
+          fi
+          echo 'pushing latest complete'
+        fi
       fi
+      echo "finished push image."
+    else
+      echo "- pushing skipped due to PUSH_IMAGE_ENABLED flag..."
     fi
-    echo "finished push image."
   else
     echo "skipped due to errors..."
   fi
