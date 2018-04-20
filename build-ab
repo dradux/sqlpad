@@ -10,7 +10,6 @@ RUNSTAMP="$(date +"%F.%H%M")"
 : ${DRY_RUN:=false}
 : ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
 : ${IMAGE_VERSION:="a${RUNSTAMP}"}
-: ${OMIT_VC_TAGGING:=false}                                             # omit applying vc tag (useful while testing build)
 : ${PUSH_IMAGE_ENABLED:='true'}                                         # push image to image registry
 : ${REPO_BRANCH:=master}
 : ${SLACK_CHANNEL:='#builds'}
@@ -20,6 +19,7 @@ RUNSTAMP="$(date +"%F.%H%M")"
 : ${TAG_IMAGE_LATEST:=true}                                             # add the 'latest' tag to the image
 : ${VC_TAG:="isi-${RUNSTAMP}"}
 : ${VC_TAG_COMMENT:="created with autobuild"}
+: ${VC_TAG_ENABLED:='true'}                                             # tag vc (false will skip vc tagging)
 
 resulting_image_size='not available'
 error_msg=''
@@ -64,7 +64,7 @@ function source_tag() {
   if [ "${error_msg}" == "" ]; then
     echo "- tagging with: ${VC_TAG} (${VC_TAG_COMMENT})"
     if [ "${DRY_RUN}" == "false" ]; then
-      if [ "${OMIT_VC_TAGGING}" == "false" ]; then
+      if [ "${VC_TAG_ENABLED}" == "true" ]; then
         git tag -a ${VC_TAG} -m "${VC_TAG_COMMENT}"
         # check result.
         if [ "$?" -ne 0 ]; then
