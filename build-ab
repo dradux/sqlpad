@@ -5,8 +5,7 @@
 RUNSTAMP="$(date +"%F.%H%M")"
 
 # PARAMS (with defaults).
-: ${APP_NAME:='undefined'}                                              # application name
-: ${BUILD_VERSION:="${RUNSTAMP}"}
+: ${APP_NAME:='sqlpad'}                                                 # application name
 : ${DRY_RUN:=false}
 : ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
 : ${IMAGE_VERSION:="a${RUNSTAMP}"}
@@ -15,7 +14,7 @@ RUNSTAMP="$(date +"%F.%H%M")"
 : ${SLACK_CHANNEL:='#builds'}
 : ${SLACK_WEBHOOK_URL:='ENTER-SLACK-WEBHOOK-URL-HERE'}
 : ${SOURCE_DATE:="${RUNSTAMP}"}
-: ${SOURCE_DIR:='/opt/sources'}                                            # add the 'latest' tag to the image
+: ${SOURCE_DIR:='/opt/sources'}                                         # add the 'latest' tag to the image
 : ${TAG_IMAGE_LATEST:=true}                                             # add the 'latest' tag to the image
 : ${VC_TAG:="isi-${RUNSTAMP}"}
 : ${VC_TAG_COMMENT:="created with autobuild"}
@@ -84,10 +83,10 @@ function build_image() {
     echo "- building image from ($(pwd)) with:"
     echo " * app=${APP_NAME}"
     echo " * release=${IMAGE_VERSION}"
-    echo " * app.source.version=branch ${REPO_BRANCH}"
+    echo " * app.source.ref=${REPO_BRANCH}"
     echo " * app.source.version.note=${VC_TAG_COMMENT}"
     echo " * app.source.date=${SOURCE_DATE}"
-    echo " * app.build.version=${BUILD_VERSION}"
+    echo " * app.build.version=${RUNSTAMP}"
     echo " * app.build.img-set-id=${VC_TAG}"
     if [ "${DRY_RUN}" == "false" ]; then
       tag_list="--tag ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
@@ -101,7 +100,7 @@ function build_image() {
       fi
       docker build \
         ${tag_list} \
-        --label "app.source.version=branch ${REPO_BRANCH}" \
+        --label "app.source.ref=${REPO_BRANCH}" \
         --label "app.source.version.note=${VC_TAG_COMMENT}" \
         --label "app.source.date=${SOURCE_DATE}" \
         --label "app.build.version=${RUNSTAMP}" \
@@ -155,13 +154,33 @@ function notify() {
   build_time="${1}"
   echo "Send slack message..."
   echo "- channel: ${SLACK_CHANNEL}"
-  build_result="✓ success"
   # get image size.
   resulting_image_size=$(docker images --filter=reference="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}" --format "{{.Size}}")
+  build_result="✓ success"
+  build_result_status="✓built"
   if [ "${error_msg}" != "" ]; then
     build_result="✗ failure: ${error_msg}"
+    build_result_status="✗built"
   fi
-  text="${APP_NAME} build completed.\n • result: ${build_result}\n • image size: ${resulting_image_size}\n • image: ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}\n----\n • runstamp: ${RUNSTAMP}\n • app.source.version: branch ${REPO_BRANCH}\n • app.build.image-set-id: ${VC_TAG}\n • build time: ${build_time}s"
+  image_push_status="✓push image"
+  if [ "${PUSH_IMAGE_ENABLED}" != "true" ]; then
+    image_push_status="✗push image"
+  fi
+  tag_latest_status="✓tag latest"
+  if [ "${TAG_IMAGE_LATEST}" != "true" ]; then
+    tag_latest_status="✗tag latest"
+  fi
+  vc_tag_status="✓vc tag"
+  if [ "${VC_TAG_ENABLED}" != "true" ]; then
+    vc_tag_status="✗vc tag"
+  fi
+  text="| ${build_result_status} | ${image_push_status} | ${tag_latest_status} | ${vc_tag_status} | in ${build_time}s |\n"
+  text="${text}• component:    ${APP_NAME}\n"
+  text="${text}• image:        ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION} (${resulting_image_size})\n"
+  text="${text}• runstamp:     ${RUNSTAMP}\n"
+  text="${text}• image-set-id: ${VC_TAG}\n"
+  text="${text}• sorce ref:    ${REPO_BRANCH}\n"
+  text="${text}• build msg:    ${build_reslt}\n"
   escaped_text=$(echo $text | sed 's/"/\"/g' | sed "s/'/\'/g" )
   json="{\"icon_emoji\": \":eyes\", \"username\": \"buildbot\", \"channel\": \"#${SLACK_CHANNEL}\", \"text\": \"${escaped_text}\"}"
   if [ "${DRY_RUN}" == "false" ]; then
