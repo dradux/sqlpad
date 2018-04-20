@@ -180,7 +180,7 @@ function notify() {
   text="${text}• runstamp:     ${RUNSTAMP}\n"
   text="${text}• image-set-id: ${VC_TAG}\n"
   text="${text}• sorce ref:    ${REPO_BRANCH}\n"
-  text="${text}• build msg:    ${build_reslt}\n"
+  text="${text}• build msg:    ${build_result}\n"
   escaped_text=$(echo $text | sed 's/"/\"/g' | sed "s/'/\'/g" )
   json="{\"icon_emoji\": \":eyes\", \"username\": \"buildbot\", \"channel\": \"#${SLACK_CHANNEL}\", \"text\": \"${escaped_text}\"}"
   if [ "${DRY_RUN}" == "false" ]; then
