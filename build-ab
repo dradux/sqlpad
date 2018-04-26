@@ -259,7 +259,7 @@ function generate_response() {
 EOF
   # echo'ing the ${response} will send it to stdout which builder will pick up and handle.
   #   the ${key} allows builder to know the message is the response message.
-  echo "${key}${response}"
+  echo "${key}${response//$'\n'/}"   # note: we remove all newlines from the response string.
 }
 
 echo "Starting build..."
