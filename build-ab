@@ -21,6 +21,20 @@ RUNSTAMP="$(date +"%F.%H%M")"
 : ${VC_TAG_ENABLED:='true'}                                             # tag vc (false will skip vc tagging)
 
 resulting_image_size='not available'
+build_success='true'
+build_result_msg='success'
+
+image_build_performed='false'
+image_push_performed='false'
+image_push_latest_performed='false'
+image_tag_performed='false'
+image_tag_latest_performed='false'
+vc_tag_performed='false'
+additional_build_info=''
+
+build_start=$(date +%s)
+build_finish=''
+
 error_msg=''
 ERR_Missing_Dockerfile="ERR-01: Dockerfile not found, cannot continue."
 ERR_Docker_Build_Failed="ERR-02: Docker Build failed, cannot continue."
@@ -69,6 +83,8 @@ function source_tag() {
         if [ "$?" -ne 0 ]; then
           error_msg="${ERR_Git_Tag_Failed}"
           echo ${error_msg}
+        else
+          vc_tag_performed='true'
         fi
       fi
     fi
@@ -110,6 +126,12 @@ function build_image() {
       if [ "$?" -ne 0 ]; then
         error_msg="${ERR_Docker_Build_Failed}"
         echo ${error_msg}
+      else
+        image_build_performed='true'
+        image_tag_performed='true'
+        if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
+          image_tag_latest_performed='true'
+        fi
       fi
     fi
     echo "finished build image."
@@ -129,6 +151,8 @@ function push_image() {
         if [ "$?" -ne 0 ]; then
           error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"
           echo ${error_msg}
+        else
+          image_push_performed='true'
         fi
         echo 'pushing ${IMAGE_VERSION} complete'
         if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
@@ -138,6 +162,8 @@ function push_image() {
           if [ "$?" -ne 0 ]; then
             error_msg="${ERR_Docker_Push_Failed} Failing image: latest"
             echo ${error_msg}
+          else
+            image_push_latest_performed='true'
           fi
           echo 'pushing latest complete'
         fi
@@ -151,7 +177,8 @@ function push_image() {
   fi
 }
 function notify() {
-  build_time="${1}"
+  #build_time="${1}"
+  build_time=$((build_finish-build_start))
   echo "Send slack message..."
   echo "- channel: ${SLACK_CHANNEL}"
   # get image size.
@@ -188,19 +215,63 @@ function notify() {
   fi
   echo "finished send slack message."
 }
+function generate_response() {
+  key='#AUTOBUILDER RESPONSE#'
+
+  component="${APP_NAME}"
+  image_url="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
+  image_size="$(docker images --filter=reference="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}" --format "{{.Size}}")"
+  runstamp="${RUNSTAMP}"
+  image_set_id="${VC_TAG}"
+  vc_ref="${REPO_BRANCH}"
+
+  if [ "${error_msg}" != "" ]; then
+    build_success='false'
+    build_result_msg="failure: ${error_msg}"
+  fi
+  build_time=$((build_finish-build_start))
+
+  # NOTICE: many of the response variables are defined/set globally.
+  read -d '' response <<EOF
+{
+  \"component\": \"${component}\",
+  \"image_url\": \"${image_url}\",
+  \"image_size\": \"${image_size}\",
+  \"runstamp\": \"${runstamp}\",
+  \"image_set_id\": \"${image_set_id}\",
+  \"vc_ref\": \"${vc_ref}\",
+
+  \"build_success\": \"${build_success}\",
+  \"build_result_msg\": \"${build_result_msg}\",
+
+  \"image_build_performed\": \"${image_build_performed}\",
+  \"image_push_performed\": \"${image_push_performed}\",
+  \"image_push_latest_performed\": \"${image_push_latest_performed}\",
+  \"image_tag_performed\": \"${image_tag_performed}\",
+  \"image_tag_latest_performed\": \"${image_tag_latest_performed}\",
+  \"vc_tag_performed\": \"${vc_tag_performed}\",
+  \"additional_build_info\": \"${additional_build_info}\",
+
+  \"build_start\": \"${build_start}\",
+  \"build_finish\": \"${build_finish}\",
+  \"build_time\": \"${build_time}\"
+}
+EOF
+  # echo'ing the ${response} will send it to stdout which builder will pick up and handle.
+  #   the ${key} allows builder to know the message is the response message.
+  echo "${key}${response}"
+}
 
 echo "Starting build..."
-
-start=$(date +%s)
 
 # build steps
 update_source
 source_tag
 build_image
 push_image
+build_finish=$(date +%s)   # set the build_finish time (runtime is calculated in the function.
 
-end=$(date +%s)
-runtime=$((end-start))
-notify ${runtime}
+notify               # old: send slack msg
+generate_response    # new: generate special echo response that builder processes
 
 echo "Finished build."
