@@ -178,8 +178,8 @@ function notify() {
   text="${text}• component:    ${APP_NAME}\n"
   text="${text}• image:        ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION} (${resulting_image_size})\n"
   text="${text}• runstamp:     ${RUNSTAMP}\n"
-  text="${text}• image-set-id: ${VC_TAG}\n"
-  text="${text}• sorce ref:    ${REPO_BRANCH}\n"
+  text="${text}• image-set-id: ${VC_TAG} (this is also the vc tag)\n"
+  text="${text}• source ref:   ${REPO_BRANCH}\n"
   text="${text}• build msg:    ${build_result}\n"
   escaped_text=$(echo $text | sed 's/"/\"/g' | sed "s/'/\'/g" )
   json="{\"icon_emoji\": \":eyes\", \"username\": \"buildbot\", \"channel\": \"#${SLACK_CHANNEL}\", \"text\": \"${escaped_text}\"}"
