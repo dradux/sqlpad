@@ -11,8 +11,6 @@ RUNSTAMP="$(date +"%F.%H%M")"
 : ${IMAGE_VERSION:="a${RUNSTAMP}"}
 : ${PUSH_IMAGE_ENABLED:='true'}                                         # push image to image registry
 : ${REPO_BRANCH:=master}
-: ${SLACK_CHANNEL:='#builds'}
-: ${SLACK_WEBHOOK_URL:='ENTER-SLACK-WEBHOOK-URL-HERE'}
 : ${SOURCE_DATE:="${RUNSTAMP}"}
 : ${SOURCE_DIR:='/opt/sources'}                                         # add the 'latest' tag to the image
 : ${TAG_IMAGE_LATEST:=true}                                             # add the 'latest' tag to the image
@@ -176,61 +174,19 @@ function push_image() {
     echo "skipped due to errors..."
   fi
 }
-function notify() {
-  #build_time="${1}"
-  build_time=$((build_finish-build_start))
-  echo "Send slack message..."
-  echo "- channel: ${SLACK_CHANNEL}"
-  # get image size.
-  resulting_image_size=$(docker images --filter=reference="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}" --format "{{.Size}}")
-  build_result="✓ success"
-  build_result_status="✓built"
-  if [ "${error_msg}" != "" ]; then
-    build_result="✗ failure: ${error_msg}"
-    build_result_status="✗built"
-  fi
-  image_push_status="✓push image"
-  if [ "${PUSH_IMAGE_ENABLED}" != "true" ]; then
-    image_push_status="✗push image"
-  fi
-  tag_latest_status="✓tag latest"
-  if [ "${TAG_IMAGE_LATEST}" != "true" ]; then
-    tag_latest_status="✗tag latest"
-  fi
-  vc_tag_status="✓vc tag"
-  if [ "${VC_TAG_ENABLED}" != "true" ]; then
-    vc_tag_status="✗vc tag"
-  fi
-  text="| ${build_result_status} | ${image_push_status} | ${tag_latest_status} | ${vc_tag_status} | in ${build_time}s |\n"
-  text="${text}• component:    ${APP_NAME}\n"
-  text="${text}• image:        ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION} (${resulting_image_size})\n"
-  text="${text}• runstamp:     ${RUNSTAMP}\n"
-  text="${text}• image-set-id: ${VC_TAG} (this is also the vc tag)\n"
-  text="${text}• source ref:   ${REPO_BRANCH}\n"
-  text="${text}• build msg:    ${build_result}\n"
-  escaped_text=$(echo $text | sed 's/"/\"/g' | sed "s/'/\'/g" )
-  json="{\"icon_emoji\": \":eyes\", \"username\": \"buildbot\", \"channel\": \"#${SLACK_CHANNEL}\", \"text\": \"${escaped_text}\"}"
-  if [ "${DRY_RUN}" == "false" ]; then
-    curl -s -S -d "payload=$json" "${SLACK_WEBHOOK_URL}"
-  fi
-  echo "finished send slack message."
-}
 function generate_response() {
   key='#AUTOBUILDER RESPONSE#'
-
   component="${APP_NAME}"
   image_url="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
   image_size="$(docker images --filter=reference="${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}" --format "{{.Size}}")"
   runstamp="${RUNSTAMP}"
   image_set_id="${VC_TAG}"
   vc_ref="${REPO_BRANCH}"
-
   if [ "${error_msg}" != "" ]; then
     build_success='false'
     build_result_msg="failure: ${error_msg}"
   fi
   build_time=$((build_finish-build_start))
-
   # NOTICE: many of the response variables are defined/set globally.
   read -d '' response <<EOF
 {
@@ -263,15 +219,11 @@ EOF
 }
 
 echo "Starting build..."
-
 # build steps
 update_source
 source_tag
 build_image
 push_image
 build_finish=$(date +%s)   # set the build_finish time (runtime is calculated in the function.
-
-notify               # old: send slack msg
-generate_response    # new: generate special echo response that builder processes
-
+generate_response    # generate the special response (echo) that feeds results back to builder.
 echo "Finished build."
