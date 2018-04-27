@@ -6,16 +6,16 @@ RUNSTAMP="$(date +"%F.%H%M")"
 
 # PARAMS (with defaults).
 : ${APP_NAME:='sqlpad'}                                                 # application name
-: ${DRY_RUN:=false}
+: ${DRY_RUN:='false'}
 : ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
 : ${IMAGE_VERSION:="a${RUNSTAMP}"}
 : ${PUSH_IMAGE_ENABLED:='true'}                                         # push image to image registry
-: ${REPO_BRANCH:=master}
+: ${REPO_BRANCH:='master'}
 : ${SOURCE_DATE:="${RUNSTAMP}"}
 : ${SOURCE_DIR:='/opt/sources'}                                         # add the 'latest' tag to the image
-: ${TAG_IMAGE_LATEST:=true}                                             # add the 'latest' tag to the image
+: ${TAG_IMAGE_LATEST:='true'}                                           # add the 'latest' tag to the image
 : ${VC_TAG:="isi-${RUNSTAMP}"}
-: ${VC_TAG_COMMENT:="created with autobuild"}
+: ${VC_TAG_COMMENT:='created with autobuild'}
 : ${VC_TAG_ENABLED:='true'}                                             # tag vc (false will skip vc tagging)
 
 resulting_image_size='not available'
@@ -105,7 +105,7 @@ function build_image() {
     if [ "${DRY_RUN}" == "false" ]; then
       tag_list="--tag ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
       if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
-        tag_list="${tag_list} --tag ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
+        tag_list="${tag_list} --tag ${IMAGE_REPO}/${APP_NAME}:latest"
       fi
       echo "- tag list is: ${tag_list}"
       if [ ! -f "Dockerfile" ]; then
