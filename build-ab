@@ -5,18 +5,18 @@
 RUNSTAMP="$(date +"%F.%H%M")"
 
 # PARAMS (with defaults).
-: ${APP_NAME:='sqlpad'}                                                 # application name
-: ${DRY_RUN:='false'}
-: ${IMAGE_REPO:='ENTER-IMAGE-REPO-HERE'}
-: ${IMAGE_VERSION:="a${RUNSTAMP}"}
-: ${PUSH_IMAGE_ENABLED:='true'}                                         # push image to image registry
-: ${REPO_BRANCH:='master'}
-: ${SOURCE_DATE:="${RUNSTAMP}"}
-: ${SOURCE_DIR:='/opt/sources'}                                         # add the 'latest' tag to the image
-: ${TAG_IMAGE_LATEST:='true'}                                           # add the 'latest' tag to the image
-: ${VC_TAG:="isi-${RUNSTAMP}"}
-: ${VC_TAG_COMMENT:='created with autobuild'}
-: ${VC_TAG_ENABLED:='true'}                                             # tag vc (false will skip vc tagging)
+: ${APP_NAME:='sqlpad'}                                                 # application/component name.
+: ${RUN_BUILD:='true'}                                                  # run build?
+: ${IMAGE_REPO:='IMAGE-REPO-URL'}                                       # the url of the image repo (images are pushed here).
+: ${IMAGE_VERSION:="a${RUNSTAMP}"}                                      # image version (tag).
+: ${PUSH_IMAGE_ENABLED:='true'}                                         # push image to image repo?
+: ${REPO_BRANCH:='master'}                                              # source repo branch to use for build.
+: ${SOURCE_DATE:="${RUNSTAMP}"}                                         # source date (used in image labels).
+: ${SOURCE_DIR:='/opt/sources'}                                         # builder source_dir.
+: ${TAG_IMAGE_LATEST:='true'}                                           # add 'latest' tag to the image?
+: ${VC_TAG:="isi-${RUNSTAMP}"}                                          # tag name to apply to vc.
+: ${VC_TAG_COMMENT:='created with autobuild'}                           # tag comment to apply to vc.
+: ${VC_TAG_ENABLED:='true'}                                             # apply the vc tag?
 
 resulting_image_size='not available'
 build_success='true'
@@ -34,13 +34,15 @@ build_start=$(date +%s)
 build_finish=''
 
 error_msg=''
-ERR_Missing_Dockerfile="ERR-01: Dockerfile not found, cannot continue."
-ERR_Docker_Build_Failed="ERR-02: Docker Build failed, cannot continue."
-ERR_Get_Docker_Build_Data_Failed="ERR-03: Get Docker Build Data failed, cannot continue."
-ERR_Git_Checkout_Failed="ERR-04: Git Checkout failed, cannot continue."
-ERR_Git_Pull_Failed="ERR-05: Git Pull failed, cannot continue."
-ERR_Git_Tag_Failed="ERR-06: Git Tag failed, cannot continue."
-ERR_Docker_Push_Failed="ERR-07: Docker Push failed, cannot continue."
+ERR_Missing_Dockerfile="ERR-001: Dockerfile not found, cannot continue."
+ERR_Docker_Build_Failed="ERR-002: Docker Build failed, cannot continue."
+ERR_Get_Docker_Build_Data_Failed="ERR-003: Get Docker Build Data failed, cannot continue."
+ERR_Git_Checkout_Failed="ERR-100: Git Checkout failed, cannot continue."
+ERR_Git_Pull_Failed="ERR-100: Git Pull failed, cannot continue."
+ERR_Git_Tag_Failed="ERR-100: Git Tag failed, cannot continue."
+ERR_Docker_Push_Failed="ERR-004: Docker Push failed, cannot continue."
+ERR_Git_Tag_Push_Failed="ERR-005: Git Tag Push failed, cannot continue."
+ERR_Missing_Build_Dockerfile="ERR-006: Build Dockerfile not found, cannot continue."
 
 
 # functions
@@ -48,21 +50,17 @@ function update_source() {
   echo "Update source..."
   if [ "${error_msg}" == "" ]; then
     echo "- check out branch: ${REPO_BRANCH}"
-    if [ "${DRY_RUN}" == "false" ]; then
+    if [ "${RUN_BUILD}" != "false" ]; then
       git checkout ${REPO_BRANCH}
-      # check result.
       if [ "$?" -ne 0 ]; then
-        error_msg="${ERR_Git_Checkout_Failed}"
-        echo ${error_msg}
+        error_msg="${ERR_Git_Checkout_Failed}"; echo ${error_msg}
       fi
     fi
     echo "Update branch..."
-    if [ "${DRY_RUN}" == "false" ]; then
+    if [ "${RUN_BUILD}" != "false" ]; then
       git pull
-      # check result.
       if [ "$?" -ne 0 ]; then
-        error_msg="${ERR_Git_Pull_Failed}"
-        echo ${error_msg}
+        error_msg="${ERR_Git_Pull_Failed}"; echo ${error_msg}
       fi
     fi
     echo "finished update source."
@@ -74,15 +72,17 @@ function source_tag() {
   echo "Tag source..."
   if [ "${error_msg}" == "" ]; then
     echo "- tagging with: ${VC_TAG} (${VC_TAG_COMMENT})"
-    if [ "${DRY_RUN}" == "false" ]; then
+    if [ "${RUN_BUILD}" != "false" ]; then
       if [ "${VC_TAG_ENABLED}" == "true" ]; then
         git tag -a ${VC_TAG} -m "${VC_TAG_COMMENT}"
-        # check result.
         if [ "$?" -ne 0 ]; then
-          error_msg="${ERR_Git_Tag_Failed}"
-          echo ${error_msg}
+          error_msg="${ERR_Git_Tag_Failed}"; echo ${error_msg}
         else
           vc_tag_performed='true'
+        fi
+        git push origin ${VC_TAG}
+        if [ "$?" -ne 0 ]; then
+          error_msg="${ERR_Git_Tag_Push_Failed}"; echo ${error_msg}
         fi
       fi
     fi
@@ -102,15 +102,14 @@ function build_image() {
     echo " * app.source.date=${SOURCE_DATE}"
     echo " * app.build.version=${RUNSTAMP}"
     echo " * app.build.img-set-id=${VC_TAG}"
-    if [ "${DRY_RUN}" == "false" ]; then
+    if [ "${RUN_BUILD}" != "false" ]; then
       tag_list="--tag ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}"
       if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
         tag_list="${tag_list} --tag ${IMAGE_REPO}/${APP_NAME}:latest"
       fi
       echo "- tag list is: ${tag_list}"
       if [ ! -f "Dockerfile" ]; then
-        echo ${ERR_Missing_Dockerfile}
-        exit 5
+        echo ${ERR_Missing_Dockerfile}; exit 5
       fi
       docker build \
         ${tag_list} \
@@ -120,10 +119,8 @@ function build_image() {
         --label "app.build.version=${RUNSTAMP}" \
         --label "app.build.img-set-id=${VC_TAG}" \
         .
-      # check build result.
       if [ "$?" -ne 0 ]; then
-        error_msg="${ERR_Docker_Build_Failed}"
-        echo ${error_msg}
+        error_msg="${ERR_Docker_Build_Failed}"; echo ${error_msg}
       else
         image_build_performed='true'
         image_tag_performed='true'
@@ -142,13 +139,11 @@ function push_image() {
   if [ "${error_msg}" == "" ]; then
     if [ "${PUSH_IMAGE_ENABLED}" == "true" ]; then
       echo "- pushing image to Repo: ${IMAGE_REPO}"
-      if [ "${DRY_RUN}" == "false" ]; then
+      if [ "${RUN_BUILD}" != "false" ]; then
         echo "- pushing image: ${IMAGE_VERSION}..."
         docker push ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}
-        # check result.
         if [ "$?" -ne 0 ]; then
-          error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"
-          echo ${error_msg}
+          error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"; echo ${error_msg}
         else
           image_push_performed='true'
         fi
@@ -156,10 +151,8 @@ function push_image() {
         if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
           echo '- pushing image: latest...'
           docker push ${IMAGE_REPO}/${APP_NAME}:latest
-          # check result.
           if [ "$?" -ne 0 ]; then
-            error_msg="${ERR_Docker_Push_Failed} Failing image: latest"
-            echo ${error_msg}
+            error_msg="${ERR_Docker_Push_Failed} Failing image: latest"; echo ${error_msg}
           else
             image_push_latest_performed='true'
           fi
@@ -227,3 +220,8 @@ push_image
 build_finish=$(date +%s)   # set the build_finish time (runtime is calculated in the function.
 generate_response    # generate the special response (echo) that feeds results back to builder.
 echo "Finished build."
+if [ "${error_msg}" != "" ]; then
+  exit 1   # signal build failure.
+else
+  exit 0   # signal normal/successful complete.
+fi
