@@ -43,6 +43,7 @@ ERR_Git_Tag_Failed="ERR-100: Git Tag failed, cannot continue."
 ERR_Docker_Push_Failed="ERR-004: Docker Push failed, cannot continue."
 ERR_Git_Tag_Push_Failed="ERR-005: Git Tag Push failed, cannot continue."
 ERR_Missing_Build_Dockerfile="ERR-006: Build Dockerfile not found, cannot continue."
+ERR_Docker_Login_Failed="ERR-007: Docker Login failed, cannot continue."
 
 
 # functions
@@ -138,25 +139,33 @@ function push_image() {
   echo "Push image..."
   if [ "${error_msg}" == "" ]; then
     if [ "${PUSH_IMAGE_ENABLED}" == "true" ]; then
-      echo "- pushing image to Repo: ${IMAGE_REPO}"
+      echo "- pushing image to [repo]: ${IMAGE_REPO}"
       if [ "${RUN_BUILD}" != "false" ]; then
-        echo "- pushing image: ${IMAGE_VERSION}..."
-        docker push ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}
+        echo "- logging in to image repo with user: ${PCR2_BUILDER_USER}..."
+        docker login -u="${PCR2_BUILDER_USER}" -p="${PCR2_BUILDER_PWD}" ${IMAGE_REPO}
         if [ "$?" -ne 0 ]; then
           error_msg="${ERR_Docker_Push_Failed} Failing image: ${IMAGE_VERSION}"; echo ${error_msg}
         else
-          image_push_performed='true'
-        fi
-        echo 'pushing ${IMAGE_VERSION} complete'
-        if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
-          echo '- pushing image: latest...'
-          docker push ${IMAGE_REPO}/${APP_NAME}:latest
+          #img_repo_access_check="$(curl -X GET https://${IMAGE_REPO}/v2/_catalog)"
+          #echo "** image repo access check: ${img_repo_access_check}"
+          echo "- pushing [image]: ${IMAGE_VERSION}..."
+          docker push ${IMAGE_REPO}/${APP_NAME}:${IMAGE_VERSION}
           if [ "$?" -ne 0 ]; then
-            error_msg="${ERR_Docker_Push_Failed} Failing image: latest"; echo ${error_msg}
+            error_msg="${ERR_Docker_Login_Failed}"; echo ${error_msg}
           else
-            image_push_latest_performed='true'
+            image_push_performed='true'
           fi
-          echo 'pushing latest complete'
+          echo "pushing [${IMAGE_VERSION}] complete"
+          if [ "${TAG_IMAGE_LATEST}" == "true" ]; then
+            echo '- pushing [image]: latest...'
+            docker push ${IMAGE_REPO}/${APP_NAME}:latest
+            if [ "$?" -ne 0 ]; then
+              error_msg="${ERR_Docker_Push_Failed} Failing image: latest"; echo ${error_msg}
+            else
+              image_push_latest_performed='true'
+            fi
+            echo 'pushing latest complete'
+          fi
         fi
       fi
       echo "finished push image."
